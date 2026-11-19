@@ -1,0 +1,41 @@
+{
+  "_comment": "Edit freely. Sizes in mm. wire od_mm = diameter INCLUDING enamel.",
+  "toroids": [
+    {"name": "(none / unknown)", "od_mm": null, "id_mm": null, "h_mm": null},
+    {"name": "T50",  "od_mm": 12.7, "id_mm": 7.7,  "h_mm": 4.8},
+    {"name": "T68",  "od_mm": 17.5, "id_mm": 9.4,  "h_mm": 4.8},
+    {"name": "T80",  "od_mm": 20.2, "id_mm": 12.6, "h_mm": 6.4},
+    {"name": "T106", "od_mm": 26.9, "id_mm": 14.5, "h_mm": 11.1},
+    {"name": "T130", "od_mm": 33.0, "id_mm": 19.8, "h_mm": 11.1},
+    {"name": "T200", "od_mm": 50.8, "id_mm": 31.8, "h_mm": 14.0}
+  ],
+  "recipes": [
+    "",
+    "copper 24",
+    "A: copper 20 ; B: copper 20",
+    "A: copper 18 ; B: copper 18 ; C: copper 18",
+    "A: copper 10 ; B: red 13 + green 13",
+    "red 10 + green 10"
+  ],
+  "_colors_comment": "Reference enamel colours as B,G,R (0-255). Add your own wire colours here.",
+  "colors": {
+    "copper": [60, 120, 200],
+    "red": [40, 40, 210],
+    "green": [60, 170, 60],
+    "blue": [200, 110, 40],
+    "yellow": [40, 200, 220]
+  },
+  "wires": [
+    {"name": "(none / unknown)", "od_mm": null},
+    {"name": "AWG 18 (1.02 mm)", "od_mm": 1.08},
+    {"name": "AWG 20 (0.81 mm)", "od_mm": 0.87},
+    {"name": "AWG 22 (0.64 mm)", "od_mm": 0.69},
+    {"name": "AWG 24 (0.51 mm)", "od_mm": 0.55},
+    {"name": "AWG 26 (0.40 mm)", "od_mm": 0.44},
+    {"name": "AWG 28 (0.32 mm)", "od_mm": 0.36},
+    {"name": "AWG 30 (0.25 mm)", "od_mm": 0.29},
+    {"name": "0.20 mm", "od_mm": 0.23},
+    {"name": "0.50 mm", "od_mm": 0.55},
+    {"name": "1.00 mm", "od_mm": 1.07}
+  ]
+}

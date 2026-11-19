@@ -22,8 +22,19 @@ jobs:
         with:
           name: ToroidCounter-exe
           path: dist/ToroidCounter.exe
-      - name: Attach exe to release (tags only)
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Read version
+        id: ver
+        shell: bash
+        run: echo "v=$(python -c "import toroid_counter as t; print(t.__version__)")" >> "$GITHUB_OUTPUT"
+      - name: Publish release with the exe (main branch and tags)
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ steps.ver.outputs.v }}
+          name: Toroid Turn Counter v${{ steps.ver.outputs.v }}
+          target_commitish: ${{ github.sha }}
+          make_latest: true
+          body: |
+            Download **ToroidCounter.exe** below and double-click it. No install, no license.
+            Windows may warn the first time (unsigned app): More info -> Run anyway.
           files: dist/ToroidCounter.exe

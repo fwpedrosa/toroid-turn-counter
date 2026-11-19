@@ -164,10 +164,20 @@ def find_ring(img: np.ndarray) -> Ring | None:
                 continue
             hx, hy = m["m10"] / m["m00"], m["m01"] / m["m00"]
             ring = _fit_oval(c, hole, hx, hy)
+            # plausibility: a toroid is a compact blob mostly inside the picture. Big dark
+            # clothing, a hand or the table merge with the frame edge and give a huge "ring".
+            H, W = g.shape[:2]
+            pts = c[:, 0, :]
+            on_border = np.mean((pts[:, 0] <= 1) | (pts[:, 1] <= 1) | (pts[:, 0] >= W - 2) | (pts[:, 1] >= H - 2))
+            circ = np.array([ring.pt(a, ring.r_out) for a in np.linspace(0, 2 * np.pi, 72, endpoint=False)])
+            outside = np.mean((circ[:, 0] < 0) | (circ[:, 1] < 0) | (circ[:, 0] >= W) | (circ[:, 1] >= H))
+            if outside > 0.25 or on_border > 0.2 or ring.r_out > 0.6 * min(H, W):
+                continue
             off = math.hypot(ring.cx - ox, ring.cy - oy) / max(ring.r_out, 1)
             hole_frac = (ring.r_in / max(ring.r_out, 1)) ** 2
             # ring-like: hole centred, hole a sensible share of the ring (real cores ~0.15-0.5)
-            score = area * max(0.05, 1 - 3 * off) * (1.0 if 0.06 < hole_frac < 0.6 else 0.2)
+            score = (area * max(0.05, 1 - 3 * off) * (1.0 if 0.06 < hole_frac < 0.6 else 0.2)
+                     * (1 - outside) ** 2)
             if best is None or score > best[0]:
                 best = (score, Ring(ring.cx / scale, ring.cy / scale, ring.r_in / scale, ring.r_out / scale,
                                     ring.ratio, ring.phi))

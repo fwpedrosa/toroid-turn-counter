@@ -3,6 +3,8 @@
 Text format (one line, sections split by ';', colours by '+'):
     A: copper 10 ; B: red 13 + green 13
 A section without a name is fine:  "copper 24"  or  "red 8 + green 8".
+A section may give its share of the core in brackets:  A (1/4): copper 6 ; B (3/4): copper 18
+A saved recipe may carry its name first:  [Filter A] A: copper 10 ; B: red 13 + green 13
 
 The app splits the detected turns into sections at the largest empty gaps around the
 ring, gives each turn a colour (nearest reference colour, refined by k-means on the
@@ -11,9 +13,12 @@ image itself), matches sections to the recipe and reports PASS / FAIL per line.
 from __future__ import annotations
 
 import itertools
+import json
 import math
 import re
 from dataclasses import dataclass
+from fractions import Fraction
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -37,29 +42,115 @@ DOT_BGR = {"copper": (0, 165, 255), "red": (0, 0, 255), "green": (0, 255, 0), "b
 class Section:
     name: str
     turns: dict  # colour -> expected turns
+    share: float | None = None  # fraction of the core this section covers (None = not given)
+
+
+# built-in layouts: name -> share of the core per section
+LAYOUTS = {
+    "Single": [1.0],
+    "Halves (1/2 + 1/2)": [1 / 2, 1 / 2],
+    "Thirds (1/3 x 3)": [1 / 3, 1 / 3, 1 / 3],
+    "Quarters (1/4 x 4)": [1 / 4] * 4,
+}
+
+
+def frac_text(x: float) -> str:
+    f = Fraction(x).limit_denominator(24)
+    return str(f) if f.denominator != 1 else str(f.numerator)
+
+
+def parse_shares(text: str) -> list[float]:
+    """'1/4, 3/4' or '1 2 1' (relative parts) or '25%, 75%' -> shares that add up to 1."""
+    items = [t for t in re.split(r"[,;+\s]+", text.strip()) if t]
+    if not items:
+        raise ValueError("Give at least one section, e.g. '1/4, 3/4'.")
+    vals = []
+    for t in items:
+        try:
+            vals.append(float(Fraction(t[:-1]) / 100) if t.endswith("%") else float(Fraction(t)))
+        except (ValueError, ZeroDivisionError):
+            raise ValueError(f"Could not read '{t}'. Use e.g. '1/4, 3/4' or '1 3'.")
+    if any(v <= 0 for v in vals):
+        raise ValueError("Every section needs a share above zero.")
+    if len(vals) > 8:
+        raise ValueError("At most 8 sections.")
+    total = sum(vals)
+    return [v / total for v in vals]
+
+
+def strip_name(text: str) -> tuple[str, str]:
+    """'[Filter A] A: copper 10' -> ('Filter A', 'A: copper 10')."""
+    m = re.match(r"\s*\[([^\]]*)\]\s*(.*)$", text or "", re.S)
+    return (m.group(1).strip(), m.group(2)) if m else ("", text or "")
 
 
 def parse(text: str) -> list[Section]:
+    text = strip_name(text)[1]
     sections = []
     for i, part in enumerate(p for p in text.split(";") if p.strip()):
         name = chr(ord("A") + i)
+        share = None
         if ":" in part:
             name, part = part.split(":", 1)
             name = name.strip()
+            m = re.match(r"(.*?)\s*\(\s*([\d./%]+)\s*\)\s*$", name)
+            if m:
+                name = m.group(1).strip() or chr(ord("A") + i)
+                t = m.group(2)
+                try:
+                    share = float(Fraction(t[:-1]) / 100) if t.endswith("%") else float(Fraction(t))
+                except (ValueError, ZeroDivisionError):
+                    raise ValueError(f"Could not read the share '({t})'. Use e.g. 'A (1/4): copper 6'.")
         turns = {}
         for item in part.split("+"):
             m = re.match(r"\s*([A-Za-z_-]+)\s*[x=]?\s*(\d+)\s*$", item)
             if not m:
                 raise ValueError(f"Could not read '{item.strip()}'. Use e.g. 'red 13 + green 13'.")
             turns[m.group(1).lower()] = int(m.group(2))
-        sections.append(Section(name, turns))
+        sections.append(Section(name, turns, share))
     if not sections:
         raise ValueError("Empty recipe.")
     return sections
 
 
-def to_text(sections: list[Section]) -> str:
-    return " ; ".join(f"{s.name}: " + " + ".join(f"{c} {n}" for c, n in s.turns.items()) for s in sections)
+def to_text(sections: list[Section], title: str = "") -> str:
+    def head(s):
+        return f"{s.name} ({frac_text(s.share)})" if s.share is not None and len(sections) > 1 else s.name
+    body = " ; ".join(f"{head(s)}: " + " + ".join(f"{c} {n}" for c, n in s.turns.items()) for s in sections)
+    return f"[{title}] {body}" if title else body
+
+
+# --------------------------------------------------------------------------- saved recipes
+def load_saved(path: Path) -> dict:
+    """{'recipes': [text, ...], 'layouts': {name: [shares]}} from the user's my_recipes.json."""
+    try:
+        d = json.loads(Path(path).read_text(encoding="utf-8"))
+    except Exception:
+        d = {}
+    return {"recipes": [r for r in d.get("recipes", []) if isinstance(r, str)],
+            "layouts": {k: v for k, v in d.get("layouts", {}).items() if isinstance(v, list)}}
+
+
+def _write(path: Path, d: dict):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(d, indent=1), encoding="utf-8")
+
+
+def save_recipe(path: Path, text: str) -> str:
+    """Add or replace (same [name]) a recipe. Returns the stored text."""
+    parse(text)  # refuse anything the counter cannot read
+    d = load_saved(path)
+    name = strip_name(text)[0]
+    d["recipes"] = [r for r in d["recipes"] if not name or strip_name(r)[0] != name] + [text]
+    _write(path, d)
+    return text
+
+
+def save_layout(path: Path, name: str, shares: list[float]):
+    d = load_saved(path)
+    d["layouts"][name] = [float(x) for x in shares]
+    _write(path, d)
 
 
 # --------------------------------------------------------------------------- colour
@@ -155,10 +246,14 @@ def evaluate(img, ring, angles, recipe: list[Section], refs=None):
         lines = [Line("all", c, sum(s.turns.get(c, 0) for s in recipe), total[c]) for c in names]
         return _unknown(lines, colors), colors, angles
     # match detected sections to recipe sections (few sections: try every order)
+    spans = _spans(angles, groups)
     best = None
     for perm in itertools.permutations(range(len(recipe))):
         cost = sum(abs(counts[g].get(c, 0) - recipe[r].turns.get(c, 0))
                    for g, r in enumerate(perm) for c in names)
+        # sections that give their share of the core: prefer the order whose sizes fit
+        cost += sum(4 * abs(spans[g] - recipe[r].share) for g, r in enumerate(perm)
+                    if recipe[r].share is not None)
         if best is None or cost < best[0]:
             best = (cost, perm)
     lines = []
@@ -168,6 +263,16 @@ def evaluate(img, ring, angles, recipe: list[Section], refs=None):
             if c in sec.turns or counts[g].get(c, 0):
                 lines.append(Line(sec.name, c, sec.turns.get(c, 0), counts[g].get(c, 0)))
     return _unknown(lines, colors), colors, angles
+
+
+def _spans(angles, groups) -> list[float]:
+    """Fraction of the circle from each group's first turn to the next group's first turn."""
+    firsts = [angles[g[0]] for g in groups]
+    out = []
+    for i, f in enumerate(firsts):
+        nxt = firsts[(i + 1) % len(firsts)]
+        out.append(((nxt - f) % (2 * math.pi)) / (2 * math.pi) or 1.0)
+    return out
 
 
 def _unknown(lines, colors):

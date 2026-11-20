@@ -41,3 +41,46 @@ def test_wrong_turn_count_fails():
     res = count_turns(img, params=CountParams(sections=3))
     lines, _, _ = recipe.evaluate(img, res.ring, res.angles, rec)
     assert any(not ln.ok and ln.section != "?" for ln in lines)
+
+
+# ------------------------------------------------------------------ recipe builder (v0.5)
+def test_shares_and_names():
+    secs = recipe.parse("[Filter A] A (1/4): copper 6 ; B (3/4): red 9 + green 9")
+    assert [s.share for s in secs] == [0.25, 0.75]
+    assert recipe.strip_name("[Filter A] A: copper 6") == ("Filter A", "A: copper 6")
+    assert recipe.parse("A (25%): copper 3 ; B: copper 4")[0].share == 0.25
+    txt = recipe.to_text(secs, "Filter A")
+    assert txt == "[Filter A] A (1/4): copper 6 ; B (3/4): red 9 + green 9"
+    assert recipe.parse(txt) == secs
+    assert recipe.parse_shares("1/4, 3/4") == [0.25, 0.75]
+    assert recipe.parse_shares("1 2 1") == [0.25, 0.5, 0.25]
+    assert recipe.parse_shares("40%, 60%") == pytest.approx([0.4, 0.6])
+    for bad in ("", "0, 1", "a, b"):
+        with pytest.raises(ValueError):
+            recipe.parse_shares(bad)
+    assert recipe.to_text(recipe.parse("copper 24")) == "A: copper 24"  # single: no share shown
+
+
+def test_save_and_load(tmp_path):
+    store = tmp_path / "my_recipes.json"
+    assert recipe.load_saved(store) == {"recipes": [], "layouts": {}}
+    recipe.save_recipe(store, "[Choke] A (1/3): copper 18 ; B (1/3): copper 18 ; C (1/3): copper 18")
+    recipe.save_recipe(store, "[Choke] A (1/2): copper 20 ; B (1/2): copper 20")  # same name replaces
+    recipe.save_layout(store, "1/4 + 3/4", [0.25, 0.75])
+    d = recipe.load_saved(store)
+    assert d["recipes"] == ["[Choke] A (1/2): copper 20 ; B (1/2): copper 20"]
+    assert d["layouts"] == {"1/4 + 3/4": [0.25, 0.75]}
+    with pytest.raises(ValueError):
+        recipe.save_recipe(store, "[Bad] copper twelve")
+
+
+@pytest.mark.parametrize("seed", range(3))
+def test_uneven_layout(seed):
+    """1/4 + 3/4 with the same colour: the share decides which section is which."""
+    secs = [{"copper": 6}, {"copper": 18}]
+    img, _ = make_sectioned(secs, seed=seed + 20, shares=[0.25, 0.75])
+    rec = recipe.parse("A (1/4): copper 6 ; B (3/4): copper 18")
+    res = count_turns(img, params=CountParams(sections=2))
+    lines, _, _ = recipe.evaluate(img, res.ring, res.angles, rec)
+    got = {(ln.section, ln.expected): ln.counted for ln in lines if ln.section != "?"}
+    assert got == {("A", 6): 6, ("B", 18): 18}

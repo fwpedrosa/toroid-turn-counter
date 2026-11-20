@@ -92,10 +92,10 @@ COLORS = {  # BGR of enamel under white light
 
 def make_sectioned(sections, size: int = 1400, od_frac: float = 0.8, id_frac: float = 0.45,
                    wire_fill: float = 0.85, sector_gap_deg: float = 25.0, noise: float = 5.0,
-                   jitter: float = 0.05, glare: bool = True, seed: int = 0):
+                   jitter: float = 0.05, glare: bool = True, seed: int = 0, shares=None):
     """Toroid with several winding sections, e.g. [{"copper": 10}, {"red": 13, "green": 13}].
 
-    Each section covers an equal share of the ring; a multi-colour section is wound
+    Each section covers an equal share of the ring (or `shares`, fractions adding up to 1); a multi-colour section is wound
     multifilar (colours alternate side by side). Returns (BGR image, list of (angle, colour)).
     """
     rng = np.random.default_rng(seed)
@@ -104,15 +104,17 @@ def make_sectioned(sections, size: int = 1400, od_frac: float = 0.8, id_frac: fl
     r_out = od_frac * size / 2
     r_in = id_frac * r_out
     rot = rng.uniform(0, 2 * np.pi)
-    share = 2 * np.pi / len(sections)
+    shares = list(shares) if shares else [1 / len(sections)] * len(sections)
+    starts = np.concatenate([[0.0], np.cumsum(shares)[:-1]]) * 2 * np.pi
     gap = math.radians(sector_gap_deg)
     wires = []
     for si, sec in enumerate(sections):
+        share = shares[si] * 2 * np.pi
         cols = list(sec.keys())
         n = max(sec.values())
         total = sum(sec.values())
         pitch = (share - gap) / total
-        start = si * share + gap / 2
+        start = starts[si] + gap / 2
         k = 0
         for t in range(n):
             for c in cols:

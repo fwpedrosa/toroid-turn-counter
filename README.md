@@ -15,12 +15,15 @@ Free Windows tool that counts the turns on a wound toroid from a digital microsc
    image: 1) centre of the hole, 2) inner edge (ID), 3) outer edge (OD). With a fixed camera and jig,
    tick **Keep ring** and the next parts reuse it.
 4. Choose toroid, wire, layers and (optionally) expected turns to get PASS / FAIL and better warnings.
-5. Optional **Recipe**: what each section of the core should have. Examples:
-   - single winding: `copper 24`
-   - two halves: `A: copper 20 ; B: copper 20`
-   - three thirds: `copper 18; copper 18; copper 18`
-   - half single, half bifilar: `A: copper 10 ; B: red 13 + green 13`
+5. Optional **Recipe**: what each section of the core should have. Press **Build...** next to Recipe:
+   - pick a **layout**: Single, Halves (1/2 + 1/2), Thirds (1/3 x 3), Quarters (1/4 x 4), or **Custom...**
+     with your own shares, e.g. `1/4, 3/4` or `1/2, 1/4, 1/4` (**Save layout as...** keeps it in the list);
+   - type the **turns** of each section; tick **Bifilar** for two wires wound together and pick both colours
+     (e.g. red 13 + green 13); **Same as A for all** copies section A to the others (18 / 18 / 18);
+   - **Use** applies it now; **Save recipe as...** gives it a name so it appears in the Recipe list next time.
+     Saved recipes and layouts live in `Documents\ToroidCounter\my_recipes.json`.
 
+   The recipe is also plain text you can type, e.g. `[Filter A] A (1/2): copper 10 ; B (1/2): red 13 + green 13`.
    The app splits the winding at the empty gaps between sections (pink lines), colours each mark by wire
    colour and shows a table with PASS / FAIL per section and colour. A grey mark means "colour not in the
    recipe" (usually glare or a lead): right-click it if it is not a turn. Keep a visible gap between sections.

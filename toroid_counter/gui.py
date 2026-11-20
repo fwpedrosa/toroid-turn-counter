@@ -12,7 +12,7 @@ import cv2
 import numpy as np
 from PIL import Image, ImageTk
 
-from . import __version__, cameras, core, logbook, measure, recipe, yolo_backend
+from . import __version__, builder, cameras, core, logbook, measure, recipe, yolo_backend
 
 HELP = (
     "QUICK START\n"
@@ -27,7 +27,9 @@ HELP = (
     "5. Press Confirm & log (Enter). Image, overlay with the ring, and result go to\n"
     "   Documents\\ToroidCounter. Each confirmed part is also saved as a training sample\n"
     "   (dataset folder) so the counter can learn from your corrections.\n\n"
-    "Recipe (optional): turns per section and colour, e.g. 'A: copper 10 ; B: red 13 + green 13'.\n"
+    "Recipe (optional): press Build... next to Recipe. Pick a layout (single, halves, thirds,\n"
+    "quarters, or Custom with your own shares such as 1/4 + 3/4), type the turns per section,\n"
+    "tick Bifilar for two wires, and Save recipe as... to pick it from the list next time.\n"
     "Tips: camera straight down, diffuse or ring light, whole toroid in view, plain background."
 )
 
@@ -50,6 +52,10 @@ def load_presets() -> dict:
         except Exception:
             continue
     return {"toroids": [{"name": "(none)", "id_mm": None}], "wires": [{"name": "(none)", "od_mm": None}]}
+
+
+def recipes_path() -> Path:
+    return logbook.default_dir() / "my_recipes.json"
 
 
 def settings_path() -> Path:
@@ -179,6 +185,10 @@ class App(tk.Tk):
             w.grid(row=r, column=1, sticky="ew", pady=2)
         form.columnconfigure(1, weight=1)
         rc = rows[-1][1]
+        self.recipe_box = rc
+        ttk.Button(form, text="Build...", width=8, command=self.open_builder).grid(
+            row=len(rows) - 1, column=2, padx=(4, 0))
+        self.refresh_recipes()
         rc.bind("<<ComboboxSelected>>", lambda e: self.recount())
         rc.bind("<Return>", lambda e: self.recount())
         rc.bind("<FocusOut>", lambda e: self.update_side())
@@ -350,6 +360,23 @@ class App(tk.Tk):
         return core.CountParams(toroid_id_mm=t.get("id_mm"), wire_od_mm=w.get("od_mm"),
                                 expected_layers=int(self.layers.get() or 1),
                                 sections=len(rec) if rec else 1, multi_color=len(colors) > 1)
+
+    def refresh_recipes(self):
+        saved = recipe.load_saved(recipes_path())["recipes"]
+        base = [r for r in self.presets.get("recipes", [""]) if r not in saved]
+        self.recipe_box["values"] = [""] + saved + [r for r in base if r]
+
+    def open_builder(self):
+        names = list(dict.fromkeys(list(recipe.DEFAULT_COLORS) + list(self.presets.get("colors", {}))))
+        names.remove("copper")
+        names.insert(0, "copper")
+
+        def use(txt):
+            self.recipe_txt.set(txt)
+            self.refresh_recipes()
+            self._save_settings()
+            self.recount()
+        builder.RecipeBuilder(self, recipes_path(), names, use, self.recipe_txt.get())
 
     def current_recipe(self):
         txt = self.recipe_txt.get().strip()
